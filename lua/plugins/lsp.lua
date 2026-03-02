@@ -1,4 +1,4 @@
-return {
+ return {
     "neovim/nvim-lspconfig",
     dependencies = {
         "williamboman/mason.nvim",
@@ -14,6 +14,9 @@ return {
         "rafamadriz/friendly-snippets",
     },
     config = function()
+        -- 1. NY VARIABEL FOR Å STYRE PAUSE
+        local pause_diagnostics = false
+
         local cmp = require('cmp')
         local cmp_lsp = require("cmp_nvim_lsp")
         local capabilities = vim.tbl_deep_extend(
@@ -21,6 +24,7 @@ return {
             {},
             vim.lsp.protocol.make_client_capabilities(),
             cmp_lsp.default_capabilities())
+            
             require("luasnip.loaders.from_vscode").lazy_load()
             require("fidget").setup({})
             require("mason").setup()
@@ -30,27 +34,22 @@ return {
                     "ts_ls", "html", "cssls", "bashls", "emmet_ls"
                 },
                 handlers = {
-                    function(server_name) 
+                    function(server_name)
                         require("lspconfig")[server_name].setup {
                             capabilities = capabilities
                         }
                     end,
-                    -- HTML CONFIG: Legg til htmldjango her
                     ["html"] = function()
                         require("lspconfig").html.setup {
                             capabilities = capabilities,
-                            filetypes = { "html", "htmldjango" }, -- Viktig!
+                            filetypes = { "html", "htmldjango" }, 
                             init_options = {
                                 configurationSection = { "html", "css", "javascript" },
-                                embeddedLanguages = {
-                                    css = true,
-                                    javascript = true
-                                },
+                                embeddedLanguages = { css = true, javascript = true },
                                 provideFormatter = true
                             }
                         }
                     end,
-                    -- EMMET CONFIG: Legg til htmldjango her også
                     ["emmet_ls"] = function()
                         require("lspconfig").emmet_ls.setup {
                             capabilities = capabilities,
@@ -112,6 +111,24 @@ return {
                     { name = "buffer" },
                 })
             })
+
+            -- 2. RESET PAUSE NÅR MAN FLYTTER MARKØREN
+            vim.api.nvim_create_autocmd("CursorMoved", {
+                callback = function()
+                    pause_diagnostics = false
+                end
+            })
+
+            -- 3. DEFINER K TIL Å SETTE PAUSE = TRUE
+            vim.api.nvim_create_autocmd('LspAttach', {
+                callback = function(ev)
+                    vim.keymap.set('n', 'K', function()
+                        pause_diagnostics = true
+                        vim.lsp.buf.hover()
+                    end, { buffer = ev.buf, desc = "Hover with diagnostic pause" })
+                end
+            })
+
             vim.diagnostic.config({
                 update_in_insert = true,
                 float = {
@@ -127,18 +144,21 @@ return {
 
             vim.o.signcolumn = 'yes:2'
 
+            -- 4. ENDRET CURSORHOLD TIL Å SJEKKE PAUSE
             vim.api.nvim_create_autocmd("CursorHold", {
-                buffer = bufnr,
                 callback = function()
-                    local opts = {
-                        focusable = false,
-                        close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
-                        border = 'rounded',
-                        source = 'always',
-                        prefix = ' ',
-                        scope = 'cursor',
-                    }
-                    vim.diagnostic.open_float(nil, opts)
+                    -- Bare åpne hvis vi IKKE har trykket K nylig
+                    if not pause_diagnostics then
+                        local opts = {
+                            focusable = false,
+                            close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
+                            border = 'rounded',
+                            source = 'always',
+                            prefix = ' ',
+                            scope = 'cursor',
+                        }
+                        vim.diagnostic.open_float(nil, opts)
+                    end
                 end
             })
         end
